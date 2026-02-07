@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets   Asset[]
+  trades   Trade[]
+  aiLogs   AILog[]
+  settings Settings?
+}
+
+model Asset {
+  id        String   @id @default(cuid())
+  symbol    String
+  name      String
+  quantity  Float    @default(0)
+  avgCost   Float    @default(0)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trades Trade[]
+
+  @@unique([symbol, userId])
+}
+
+model Trade {
+  id          String      @id @default(cuid())
+  symbol      String
+  action      TradeAction
+  quantity    Float
+  price       Float
+  totalValue  Float
+  confidence  Float       @default(0)
+  reasoning   String
+  status      TradeStatus @default(PENDING)
+  paperTrade  Boolean     @default(true)
+  brokerId    String?     // External broker order ID
+  userId      String
+  assetId     String?
+  executedAt  DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+}
+
+enum TradeAction {
+  BUY
+  SELL
+  HOLD
+}
+
+enum TradeStatus {
+  PENDING
+  EXECUTED
+  FAILED
+  CANCELLED
+}
+
+model AILog {
+  id            String   @id @default(cuid())
+  sessionId     String
+  prompt        String
+  response      String
+  model         String   @default("claude-3-5-sonnet-20241022")
+  tokensUsed    Int      @default(0)
+  decision      String?  // JSON string of the decision output
+  sentiment     Float?   // -1 to 1
+  confidence    Float?   // 0 to 1
+  symbols       String?  // Comma-separated symbols analyzed
+  durationMs    Int      @default(0)
+  userId        String
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  id                    String  @id @default(cuid())
+  userId                String  @unique
+  tradingEnabled        Boolean @default(false)
+  paperTrading          Boolean @default(true)
+  maxTradeAmount        Float   @default(1000)
+  maxDailyDrawdown      Float   @default(5000)
+  maxPositionSize       Float   @default(10000)
+  alpacaApiKey          String? // AES-256 encrypted
+  alpacaApiSecret       String? // AES-256 encrypted
+  anthropicApiKey       String? // AES-256 encrypted
+  newsApiKey            String? // AES-256 encrypted
+  telegramBotToken      String? // AES-256 encrypted
+  telegramUserId        String?
+  riskTolerancePct      Float   @default(2)    // Max % of portfolio per trade
+  stopLossPct           Float   @default(5)    // Auto stop-loss %
+  takeProfitPct         Float   @default(10)   // Auto take-profit %
+  analyzedSymbols       String  @default("AAPL,GOOGL,MSFT,AMZN,TSLA")
+  analysisIntervalMins  Int     @default(30)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RiskEvent {
+  id          String   @id @default(cuid())
+  type        String   // "MAX_TRADE", "DAILY_DRAWDOWN", "POSITION_LIMIT", "KILL_SWITCH"
+  description String
+  blocked     Boolean  @default(true)
+  tradeData   String?  // JSON of the attempted trade
+  createdAt   DateTime @default(now())
+}
